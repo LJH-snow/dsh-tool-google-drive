@@ -1,5 +1,7 @@
 # dsh-tool-google-drive
 
+[English](README.md) | 中文
+
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）提供 Google Workspace 只读集成能力的 Cordis 工具插件。Agent 可以验证凭证、搜索 Drive 文件、查看文件元数据、导出 Google Workspace 文件内容、列出共享云端硬盘、读取 Google Docs 文本，以及读取 Google Sheets 元数据/单元格值。
 
 ## 安装

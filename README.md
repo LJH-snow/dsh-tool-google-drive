@@ -1,5 +1,7 @@
 # dsh-tool-google-drive
 
+[English](README.md) | [中文](README.zh.md)
+
 A Cordis tool plugin that gives [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) Google Workspace read capabilities. Agents can verify credentials, search Drive files, inspect file metadata, export Google Workspace file content, list Shared Drives, read Google Docs text, and read Google Sheets metadata/values.
 
 ## Install
