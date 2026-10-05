@@ -1,11 +1,10 @@
 {
   "name": "dsh-tool-google-drive",
-  "version": "0.1.0+codex.20260831150309",
+  "version": "0.4.0",
   "description": "Google Workspace read-only tools for DeepSeek Harness",
   "author": {
     "name": "Local developer"
   },
-  "skills": "./skills/",
   "interface": {
     "displayName": "Dsh Tool Google Drive",
     "shortDescription": "Search/export Drive files and read Docs/Sheets.",
