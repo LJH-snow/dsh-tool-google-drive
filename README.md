@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README.zh.md)
 
-A Cordis tool plugin that gives [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) Google Workspace read capabilities. Agents can verify credentials, search Drive files, inspect file metadata, export Google Workspace file content, list Shared Drives, read Google Docs text, and read Google Sheets metadata/values.
+A Cordis tool plugin that gives [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) Google Workspace read capabilities. Agents can verify credentials, search Drive files, inspect file metadata and sharing/revision history, export Google Workspace file content, list Shared Drives, read Google Docs text, and read Google Sheets metadata/values.
 
 ## Install
 
@@ -71,9 +71,11 @@ The helper requests offline access with consent prompting so Google can return a
 
 | Tool | Description | Write |
 |---|---|---|
-| `gdrive_auth_test` | Verify Google Drive credentials and return token metadata | no |
+| `gdrive_auth_test` | Verify Google Drive credentials without returning token material | no |
 | `gdrive_list_files` | List or search Drive files by query and pagination | no |
 | `gdrive_get_file` | Get one Drive file's metadata by file ID | no |
+| `gdrive_list_permissions` | List file/folder/shared-drive sharing permissions with pagination | no |
+| `gdrive_list_revisions` | List a file's revision metadata with pagination | no |
 | `gdrive_export_file` | Export a Google Workspace file to text or base64 for binary MIME types | no |
 | `gdrive_list_shared_drives` | List Shared Drives with pagination and query support | no |
 | `gdrive_get_shared_drive` | Get one Shared Drive metadata record | no |
@@ -101,11 +103,19 @@ gdrive_list_files({ corpora: 'allDrives', includeItemsFromAllDrives: true, suppo
 gdrive_export_file({ fileId: 'doc_file_id', exportMimeType: 'text/plain' })
 gdrive_export_file({ fileId: 'doc_file_id', exportMimeType: 'application/pdf', responseEncoding: 'base64' })
 
+# Inspect sharing and revision history
+gdrive_list_permissions({ fileId: 'file_id', pageSize: 50, supportsAllDrives: true })
+gdrive_list_revisions({ fileId: 'file_id', pageSize: 50 })
+
 # Read Docs and Sheets directly
 gdocs_get_document({ documentId: 'doc_id' })
 gsheets_get_spreadsheet({ spreadsheetId: 'spreadsheet_id' })
 gsheets_get_values({ spreadsheetId: 'spreadsheet_id', range: 'Sheet1!A1:D20' })
 ```
+
+Permission and revision listings return an opaque `nextPageToken`; pass it back as `pageToken` to continue. `gdrive_list_permissions` can include shared-drive and domain-admin flags when the OAuth principal has those permissions. Permission email addresses, revision download URLs, and exported content are returned only by explicitly requested read tools; treat them as sensitive workspace data.
+
+Export, Docs, and Sheets content is bounded in the client result layer. Export output accepts maxBytes (default 1 MiB, capped at 10 MiB); Docs accepts maxBytes/maxTabs; Sheets accepts maxRows/maxColumns/maxCells. Results include truncated and contentLength so callers can detect an imposed limit.
 
 ## Development
 

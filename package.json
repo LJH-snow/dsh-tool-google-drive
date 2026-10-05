@@ -1,7 +1,7 @@
 {
   "name": "@libai168/dsh-tool-google-drive",
-  "description": "Google Workspace read-only tools for DeepSeek Harness: Drive search/export, Docs, Sheets, and Shared Drives",
-  "version": "0.1.0",
+  "description": "Google Workspace read-only tools for DeepSeek Harness: Drive files, permissions, revisions, Docs, Sheets, and Shared Drives",
+  "version": "0.3.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

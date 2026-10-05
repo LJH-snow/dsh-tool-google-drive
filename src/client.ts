@@ -50,6 +50,34 @@ export interface DriveFileInfo {
   owners: DriveFileOwner[]
 }
 
+export interface DrivePermissionInfo {
+  id: string
+  type: string
+  kind: string
+  role: string
+  emailAddress: string
+  displayName: string
+  allowFileDiscovery: boolean
+  expirationTime: string
+  deleted: boolean
+  permissionDetails: string
+}
+
+export interface DriveRevisionInfo {
+  id: string
+  mimeType: string
+  modifiedTime: string
+  keepForever: boolean
+  published: boolean
+  publishAuto: boolean
+  publishedOutsideDomain: boolean
+  size: string
+  originalFilename: string
+  md5Checksum: string
+  downloadUrl: string
+  exportLinks: string
+}
+
 export interface SharedDriveInfo {
   id: string
   name: string
@@ -76,6 +104,8 @@ export interface GoogleDocumentInfo {
   text: string
   tabCount: number
   tabs: GoogleDocTabInfo[]
+  contentLength: number
+  truncated: boolean
 }
 
 export interface GoogleSheetPropertiesInfo {
@@ -105,6 +135,8 @@ export interface GoogleSheetValuesInfo {
   rowCount: number
   columnCount: number
   values: string[][]
+  contentLength: number
+  truncated: boolean
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -132,6 +164,23 @@ function asBoolean(record: Record<string, unknown>, key: string): boolean {
 
 function toJson(value: unknown): string {
   try { return JSON.stringify(value ?? {}) } catch { return '{}' }
+}
+
+function clampBytes(value: number | undefined, fallback = 1024 * 1024, maximum = 10 * 1024 * 1024): number {
+  if (!Number.isFinite(value)) return fallback
+  return Math.max(1, Math.min(maximum, Math.trunc(value as number)))
+}
+
+function clampCount(value: number | undefined, fallback: number, maximum: number): number {
+  if (!Number.isFinite(value)) return fallback
+  return Math.max(1, Math.min(maximum, Math.trunc(value as number)))
+}
+
+function limitUtf8(value: string, maxBytes: number): { value: string; contentLength: number; truncated: boolean } {
+  const source = Buffer.from(value, 'utf8')
+  if (source.byteLength <= maxBytes) return { value, contentLength: source.byteLength, truncated: false }
+  const limited = source.subarray(0, maxBytes).toString('utf8')
+  return { value: limited, contentLength: Buffer.byteLength(limited, 'utf8'), truncated: true }
 }
 
 function mapOwners(value: unknown): DriveFileOwner[] {
@@ -163,6 +212,40 @@ function mapFile(data: unknown): DriveFileInfo {
     driveId: asString(r, 'driveId'),
     parents: asArray(r.parents).map(v => String(v)),
     owners: mapOwners(r.owners),
+  }
+}
+
+function mapPermission(data: unknown): DrivePermissionInfo {
+  const r = asRecord(data)
+  return {
+    id: asString(r, 'id'),
+    type: asString(r, 'type'),
+    kind: asString(r, 'kind'),
+    role: asString(r, 'role'),
+    emailAddress: asString(r, 'emailAddress'),
+    displayName: asString(r, 'displayName'),
+    allowFileDiscovery: asBoolean(r, 'allowFileDiscovery'),
+    expirationTime: asString(r, 'expirationTime'),
+    deleted: asBoolean(r, 'deleted'),
+    permissionDetails: toJson(r.permissionDetails),
+  }
+}
+
+function mapRevision(data: unknown): DriveRevisionInfo {
+  const r = asRecord(data)
+  return {
+    id: asString(r, 'id'),
+    mimeType: asString(r, 'mimeType'),
+    modifiedTime: asString(r, 'modifiedTime'),
+    keepForever: asBoolean(r, 'keepForever'),
+    published: asBoolean(r, 'published'),
+    publishAuto: asBoolean(r, 'publishAuto'),
+    publishedOutsideDomain: asBoolean(r, 'publishedOutsideDomain'),
+    size: asString(r, 'size'),
+    originalFilename: asString(r, 'originalFilename'),
+    md5Checksum: asString(r, 'md5Checksum'),
+    downloadUrl: asString(r, 'downloadUrl'),
+    exportLinks: toJson(r.exportLinks),
   }
 }
 
@@ -266,9 +349,26 @@ function mapSpreadsheet(data: unknown): GoogleSpreadsheetInfo {
   }
 }
 
-function mapSheetValues(data: unknown, spreadsheetId: string, fallbackRange = ''): GoogleSheetValuesInfo {
+function mapSheetValues(data: unknown, spreadsheetId: string, fallbackRange = '', options: { maxRows?: number; maxColumns?: number; maxCells?: number } = {}): GoogleSheetValuesInfo {
   const r = asRecord(data)
-  const values = asArray(r.values).map(row => asArray(row).map(cell => cell == null ? '' : String(cell)))
+  const maxRows = clampCount(options.maxRows, 1000, 10000)
+  const maxColumns = clampCount(options.maxColumns, 100, 1000)
+  const maxCells = clampCount(options.maxCells, 100000, 1000000)
+  const rawValues = asArray(r.values)
+  let truncated = rawValues.length > maxRows
+  let remaining = maxCells
+  const values: string[][] = []
+  for (const row of rawValues.slice(0, maxRows)) {
+    const rawRow = asArray(row)
+    if (rawRow.length > maxColumns || rawRow.length > remaining) truncated = true
+    const limitedRow = rawRow.slice(0, Math.min(maxColumns, remaining)).map(cell => cell == null ? '' : String(cell))
+    values.push(limitedRow)
+    remaining -= limitedRow.length
+    if (remaining <= 0 && values.length < rawValues.length) {
+      truncated = true
+      break
+    }
+  }
   return {
     spreadsheetId,
     range: asString(r, 'range') || fallbackRange,
@@ -276,6 +376,8 @@ function mapSheetValues(data: unknown, spreadsheetId: string, fallbackRange = ''
     rowCount: values.length,
     columnCount: values.reduce((max, row) => Math.max(max, row.length), 0),
     values,
+    contentLength: values.reduce((total, row) => total + row.length, 0),
+    truncated,
   }
 }
 
@@ -400,9 +502,9 @@ export class GoogleDriveClient {
     }
   }
 
-  async authTest(signal?: AbortSignal): Promise<{ ok: boolean; authMethod: string; tokenPreview: string }> {
-    const token = await this.getAccessToken(signal)
-    return { ok: true, authMethod: this.staticToken ? 'access_token' : 'refresh_token', tokenPreview: `${token.slice(0, 8)}...` }
+  async authTest(signal?: AbortSignal): Promise<{ ok: boolean; authMethod: string }> {
+    await this.getAccessToken(signal)
+    return { ok: true, authMethod: this.staticToken ? 'access_token' : 'refresh_token' }
   }
 
   async listFiles(options: {
@@ -454,12 +556,53 @@ export class GoogleDriveClient {
     return mapFile(data)
   }
 
+  async listPermissions(fileId: string, options: {
+    pageSize?: number
+    pageToken?: string
+    supportsAllDrives?: boolean
+    useDomainAdminAccess?: boolean
+    includePermissionsForView?: string
+    fields?: string
+    signal?: AbortSignal
+  } = {}): Promise<{ fileId: string; items: DrivePermissionInfo[]; nextPageToken: string }> {
+    const data = asRecord(await this.request('GET', '/files/' + encodeURIComponent(fileId) + '/permissions', {
+      params: {
+        pageSize: options.pageSize,
+        pageToken: options.pageToken,
+        supportsAllDrives: options.supportsAllDrives,
+        useDomainAdminAccess: options.useDomainAdminAccess,
+        includePermissionsForView: options.includePermissionsForView,
+        fields: options.fields ?? 'nextPageToken,permissions(id,type,kind,role,emailAddress,displayName,allowFileDiscovery,expirationTime,deleted,permissionDetails)',
+      },
+      signal: options.signal,
+    }))
+    return { fileId, items: asArray(data.permissions).map(mapPermission), nextPageToken: asString(data, 'nextPageToken') }
+  }
+
+  async listRevisions(fileId: string, options: {
+    pageSize?: number
+    pageToken?: string
+    fields?: string
+    signal?: AbortSignal
+  } = {}): Promise<{ fileId: string; items: DriveRevisionInfo[]; nextPageToken: string }> {
+    const data = asRecord(await this.request('GET', '/files/' + encodeURIComponent(fileId) + '/revisions', {
+      params: {
+        pageSize: options.pageSize,
+        pageToken: options.pageToken,
+        fields: options.fields ?? 'nextPageToken,revisions(id,mimeType,modifiedTime,keepForever,published,publishAuto,publishedOutsideDomain,size,originalFilename,md5Checksum,downloadUrl,exportLinks)',
+      },
+      signal: options.signal,
+    }))
+    return { fileId, items: asArray(data.revisions).map(mapRevision), nextPageToken: asString(data, 'nextPageToken') }
+  }
+
   async exportFile(fileId: string, options: {
     exportMimeType?: string
     responseEncoding?: 'text' | 'base64'
     supportsAllDrives?: boolean
+    maxBytes?: number
     signal?: AbortSignal
-  } = {}): Promise<{ fileId: string; exportMimeType: string; encoding: string; content: string; contentLength: number }> {
+  } = {}): Promise<{ fileId: string; exportMimeType: string; encoding: string; content: string; contentLength: number; truncated: boolean }> {
     const exportMimeType = options.exportMimeType ?? 'text/plain'
     const responseEncoding = options.responseEncoding ?? 'text'
     const raw = await this.request('GET', `/files/${encodeURIComponent(fileId)}/export`, {
@@ -470,10 +613,19 @@ export class GoogleDriveClient {
       responseType: responseEncoding === 'base64' ? 'arrayBuffer' : 'text',
       signal: options.signal,
     })
-    const content = responseEncoding === 'base64'
-      ? Buffer.from(raw as ArrayBuffer).toString('base64')
-      : String(raw)
-    return { fileId, exportMimeType, encoding: responseEncoding, content, contentLength: content.length }
+    const maxBytes = clampBytes(options.maxBytes)
+    let content: string
+    let truncated = false
+    if (responseEncoding === 'base64') {
+      const bytes = Buffer.from(raw as ArrayBuffer)
+      truncated = bytes.byteLength > maxBytes
+      content = bytes.subarray(0, maxBytes).toString('base64')
+    } else {
+      const limited = limitUtf8(String(raw), maxBytes)
+      content = limited.value
+      truncated = limited.truncated
+    }
+    return { fileId, exportMimeType, encoding: responseEncoding, content, contentLength: content.length, truncated }
   }
 
   async listSharedDrives(options: {
@@ -519,6 +671,8 @@ export class GoogleDriveClient {
     suggestionsViewMode?: string
     commentsViewMode?: string
     fields?: string
+    maxBytes?: number
+    maxTabs?: number
     signal?: AbortSignal
   } = {}): Promise<GoogleDocumentInfo> {
     const data = await this.request('GET', `https://docs.googleapis.com/v1/documents/${encodeURIComponent(documentId)}`, {
@@ -531,14 +685,19 @@ export class GoogleDriveClient {
       signal: options.signal,
     })
     const extracted = extractDocumentContent(data)
+    const limitedText = limitUtf8(extracted.text, clampBytes(options.maxBytes))
+    const maxTabs = clampCount(options.maxTabs, 100, 1000)
+    const tabs = extracted.tabs.slice(0, maxTabs)
     const r = asRecord(data)
     return {
       documentId: asString(r, 'documentId') || documentId,
       title: asString(r, 'title'),
       revisionId: asString(r, 'revisionId'),
-      text: extracted.text,
+      text: limitedText.value,
       tabCount: extracted.tabs.length,
-      tabs: extracted.tabs,
+      tabs,
+      contentLength: limitedText.contentLength,
+      truncated: limitedText.truncated || extracted.tabs.length > tabs.length,
     }
   }
 
@@ -563,6 +722,9 @@ export class GoogleDriveClient {
     valueRenderOption?: string
     dateTimeRenderOption?: string
     majorDimension?: string
+    maxRows?: number
+    maxColumns?: number
+    maxCells?: number
     signal?: AbortSignal
   } = {}): Promise<GoogleSheetValuesInfo> {
     const data = await this.request('GET', `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`, {
@@ -573,6 +735,6 @@ export class GoogleDriveClient {
       },
       signal: options.signal,
     })
-    return mapSheetValues(data, spreadsheetId, range)
+    return mapSheetValues(data, spreadsheetId, range, options)
   }
 }

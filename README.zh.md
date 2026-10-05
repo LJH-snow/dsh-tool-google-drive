@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）提供 Google Workspace 只读集成能力的 Cordis 工具插件。Agent 可以验证凭证、搜索 Drive 文件、查看文件元数据、导出 Google Workspace 文件内容、列出共享云端硬盘、读取 Google Docs 文本，以及读取 Google Sheets 元数据/单元格值。
+为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）提供 Google Workspace 只读集成能力的 Cordis 工具插件。Agent 可以验证凭证、搜索 Drive 文件、查看文件元数据与共享/修订历史、导出 Google Workspace 文件内容、列出共享云端硬盘、读取 Google Docs 文本，以及读取 Google Sheets 元数据/单元格值。
 
 ## 安装
 
@@ -71,9 +71,11 @@ npm install @libai168/dsh-tool-google-drive
 
 | 工具 | 说明 | 写操作 |
 |---|---|---|
-| `gdrive_auth_test` | 验证 Google Drive 凭证并返回 token 元信息 | 否 |
+| `gdrive_auth_test` | 验证 Google Drive 凭证但不返回 token 内容 | 否 |
 | `gdrive_list_files` | 按查询与分页列出或搜索 Drive 文件 | 否 |
 | `gdrive_get_file` | 按文件 ID 获取 Drive 文件元数据 | 否 |
+| `gdrive_list_permissions` | 分页列出文件、文件夹或共享云端硬盘的共享权限 | 否 |
+| `gdrive_list_revisions` | 分页列出文件的修订元数据 | 否 |
 | `gdrive_export_file` | 将 Google Workspace 文件导出为文本，或将二进制 MIME 类型导出为 base64 | 否 |
 | `gdrive_list_shared_drives` | 列出共享云端硬盘，支持分页与查询 | 否 |
 | `gdrive_get_shared_drive` | 获取单个共享云端硬盘元数据 | 否 |
@@ -101,11 +103,19 @@ gdrive_list_files({ corpora: 'allDrives', includeItemsFromAllDrives: true, suppo
 gdrive_export_file({ fileId: 'doc_file_id', exportMimeType: 'text/plain' })
 gdrive_export_file({ fileId: 'doc_file_id', exportMimeType: 'application/pdf', responseEncoding: 'base64' })
 
+# 查看共享权限和修订历史
+gdrive_list_permissions({ fileId: 'file_id', pageSize: 50, supportsAllDrives: true })
+gdrive_list_revisions({ fileId: 'file_id', pageSize: 50 })
+
 # 直接读取 Docs 与 Sheets
 gdocs_get_document({ documentId: 'doc_id' })
 gsheets_get_spreadsheet({ spreadsheetId: 'spreadsheet_id' })
 gsheets_get_values({ spreadsheetId: 'spreadsheet_id', range: 'Sheet1!A1:D20' })
 ```
+
+权限和修订列表会返回不透明的 `nextPageToken`；把它作为 `pageToken` 传回即可继续分页。`gdrive_list_permissions` 支持在 OAuth 主体具备权限时传入共享云端硬盘和域管理员参数。权限邮箱、修订下载 URL 以及导出内容只会由明确调用的只读工具返回，请将它们视为敏感工作区数据。
+
+导出、Docs 和 Sheets 内容会在客户端结果层限额。导出支持 maxBytes（默认 1 MiB，最多 10 MiB），Docs 支持 maxBytes/maxTabs，Sheets 支持 maxRows/maxColumns/maxCells。结果包含 truncated 和 contentLength，调用方可识别是否触发限额。
 
 ## 开发
 

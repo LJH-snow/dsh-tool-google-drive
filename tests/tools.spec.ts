@@ -29,6 +29,8 @@ describe('tool definitions', () => {
       'gdrive_get_file',
       'gdrive_get_shared_drive',
       'gdrive_list_files',
+      'gdrive_list_permissions',
+      'gdrive_list_revisions',
       'gdrive_list_shared_drives',
       'gsheets_get_spreadsheet',
       'gsheets_get_values',
@@ -44,6 +46,8 @@ describe('tool definitions', () => {
     expect(await map.gdrive_auth_test.execute({}, exec())).toMatchObject({ ok: false })
     expect(await map.gdrive_list_files.execute({}, exec())).toMatchObject({ found: false })
     expect(await map.gdrive_get_file.execute({ fileId: 'file_1' }, exec())).toMatchObject({ found: false })
+    expect(await map.gdrive_list_permissions.execute({ fileId: 'file_1' }, exec())).toMatchObject({ found: false })
+    expect(await map.gdrive_list_revisions.execute({ fileId: 'file_1' }, exec())).toMatchObject({ found: false })
     expect(await map.gdrive_export_file.execute({ fileId: 'doc_1' }, exec())).toMatchObject({ found: false })
     expect(await map.gdrive_list_shared_drives.execute({}, exec())).toMatchObject({ found: false })
     expect(await map.gdrive_get_shared_drive.execute({ driveId: 'drive_1' }, exec())).toMatchObject({ found: false })
@@ -81,6 +85,26 @@ describe('tool definitions', () => {
     expectValidOutput(map.gdrive_get_file, file)
     expect((map.gdrive_get_file.output.render({}, file as any) as any[])[0]?.text).toContain('Quarterly report')
     expect(fetchImpl.mock.calls.length).toBe(2)
+  })
+
+  it('executes permission and revision listings with pagination and rendering', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ permissions: [{ id: 'perm_1', type: 'user', role: 'reader', displayName: 'Alice', emailAddress: 'alice@example.com', deleted: false }], nextPageToken: 'perm_next' }))
+      .mockResolvedValueOnce(jsonResponse({ revisions: [{ id: 'rev_1', mimeType: 'application/pdf', modifiedTime: '2026-08-02T00:00:00Z', keepForever: true, size: '1234', originalFilename: 'report.pdf' }], nextPageToken: 'rev_next' }))
+    const map = tools(new GoogleDriveClient({ accessToken: 'ya29.static', fetchImpl }))
+
+    const permissions = await map.gdrive_list_permissions.execute({ fileId: 'file_1', pageSize: 10, pageToken: 'perm_prev' }, exec())
+    const revisions = await map.gdrive_list_revisions.execute({ fileId: 'file_1', pageSize: 5, pageToken: 'rev_prev' }, exec())
+    expect(permissions).toMatchObject({ found: true, fileId: 'file_1', nextPageToken: 'perm_next', items: [{ role: 'reader', displayName: 'Alice' }] })
+    expect(revisions).toMatchObject({ found: true, fileId: 'file_1', nextPageToken: 'rev_next', items: [{ id: 'rev_1', keepForever: true }] })
+    expectValidOutput(map.gdrive_list_permissions, permissions)
+    expectValidOutput(map.gdrive_list_revisions, revisions)
+    expect((map.gdrive_list_permissions.output.render({}, permissions as any) as any[])[0]?.text).toContain('Alice')
+    expect((map.gdrive_list_revisions.output.render({}, revisions as any) as any[])[0]?.text).toContain('rev_1')
+    expect(String(fetchImpl.mock.calls[0][0])).toContain('pageToken=perm_prev')
+    expect(String(fetchImpl.mock.calls[1][0])).toContain('pageToken=rev_prev')
+    expect(map.gdrive_list_permissions.presentCall!({ fileId: 'file_1' })).toMatchObject({ card: 'generic', kind: 'search' })
+    expect(map.gdrive_list_revisions.presentCall!({ fileId: 'file_1' })).toMatchObject({ card: 'generic', kind: 'search' })
   })
 
   it('executes export, shared drive, docs, and sheets tools', async () => {

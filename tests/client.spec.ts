@@ -77,6 +77,47 @@ describe('GoogleDriveClient', () => {
     expect(url).toContain('/files/file_1')
   })
 
+  it('lists file permissions with sharing fields and a page cursor', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      permissions: [{
+        id: 'perm_1', type: 'user', kind: 'drive#permission', role: 'writer',
+        emailAddress: 'alice@example.com', displayName: 'Alice', allowFileDiscovery: false,
+        expirationTime: '2026-12-01T00:00:00Z', deleted: false,
+        permissionDetails: [{ permissionType: 'file', role: 'writer', inherited: false }],
+      }],
+      nextPageToken: 'perm_next',
+    }))
+    const client = new GoogleDriveClient({ accessToken: 'ya29.static', fetchImpl })
+    const result = await client.listPermissions('file_1', { pageSize: 10, pageToken: 'perm_prev', supportsAllDrives: true, useDomainAdminAccess: true })
+
+    expect(result).toMatchObject({ fileId: 'file_1', nextPageToken: 'perm_next', items: [{ id: 'perm_1', role: 'writer', emailAddress: 'alice@example.com', permissionDetails: expect.stringContaining('inherited') }] })
+    const [url] = fetchImpl.mock.calls[0] as unknown as [string]
+    expect(url).toContain('/files/file_1/permissions')
+    expect(url).toContain('pageSize=10')
+    expect(url).toContain('pageToken=perm_prev')
+    expect(url).toContain('supportsAllDrives=true')
+    expect(url).toContain('useDomainAdminAccess=true')
+  })
+
+  it('lists file revisions with metadata and a page cursor', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      revisions: [{
+        id: 'rev_1', mimeType: 'application/pdf', modifiedTime: '2026-08-02T00:00:00Z', keepForever: true,
+        published: false, publishAuto: false, publishedOutsideDomain: false, size: '1234', originalFilename: 'report.pdf',
+        md5Checksum: 'abc123', downloadUrl: 'https://download.example/rev_1', exportLinks: { 'text/plain': 'https://export.example/rev_1' },
+      }],
+      nextPageToken: 'rev_next',
+    }))
+    const client = new GoogleDriveClient({ accessToken: 'ya29.static', fetchImpl })
+    const result = await client.listRevisions('file_1', { pageSize: 5, pageToken: 'rev_prev' })
+
+    expect(result).toMatchObject({ fileId: 'file_1', nextPageToken: 'rev_next', items: [{ id: 'rev_1', mimeType: 'application/pdf', keepForever: true, originalFilename: 'report.pdf', exportLinks: expect.stringContaining('text/plain') }] })
+    const [url] = fetchImpl.mock.calls[0] as unknown as [string]
+    expect(url).toContain('/files/file_1/revisions')
+    expect(url).toContain('pageSize=5')
+    expect(url).toContain('pageToken=rev_prev')
+  })
+
   it('exports a Google Workspace file', async () => {
     const fetchImpl = vi.fn(async () => new Response('hello export', { status: 200, headers: { 'content-type': 'text/plain' } }))
     const client = new GoogleDriveClient({ accessToken: 'ya29.static', fetchImpl })
