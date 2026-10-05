@@ -34,6 +34,8 @@ npm install @libai168/dsh-tool-google-drive
 - Docs 读取：`https://www.googleapis.com/auth/documents.readonly`
 - Sheets 读取：`https://www.googleapis.com/auth/spreadsheets.readonly`
 
+`baseUrl` 与 `tokenUrl` 两个覆盖都必须是绝对的 `http://` 或 `https://` 根地址。只允许公网可达主机：localhost、环回、私有、链路本地、CGNAT、组播、保留/文档/基准测试网段以及全部 IANA 特殊用途地址段都会被拒绝；DNS 结果包含任一此类地址时会在发出请求前 fail closed。不允许 credentials、query、fragment 或非根路径。
+
 ## OAuth 授权辅助脚本
 
 本包内置一个无额外依赖的辅助脚本：生成 Google OAuth 授权 URL、监听本机回调、用授权码换取 token，并输出可直接复制到 Cordis 配置里的 `refreshToken` 片段。

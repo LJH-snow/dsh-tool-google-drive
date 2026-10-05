@@ -34,6 +34,8 @@ Recommended read-only OAuth scopes:
 - Docs read: `https://www.googleapis.com/auth/documents.readonly`
 - Sheets read: `https://www.googleapis.com/auth/spreadsheets.readonly`
 
+Both `baseUrl` and `tokenUrl` overrides must be absolute `http://` or `https://` root URLs. Only publicly reachable hosts are allowed: localhost, loopback, private, link-local, CGNAT, multicast, reserved/documentation/benchmark ranges, and every IANA special-purpose block are rejected, and a hostname whose DNS results contain any such address fails closed before the request is sent. Credentials, query strings, fragments, and non-root paths are not allowed.
+
 ## OAuth helper
 
 This package includes a small no-dependency helper that generates a Google OAuth consent URL, captures the loopback callback, exchanges the authorization code, and prints a ready-to-copy Cordis config snippet with a refresh token.

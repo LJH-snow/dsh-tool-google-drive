@@ -1,5 +1,7 @@
 /** Google Drive API client with injected fetch for testability. */
 
+import { assertSafeUrl, EndpointSecurityError, normalizeBaseUrl, type LookupImpl } from './url-security.js'
+
 export interface GoogleDriveClientOptions {
   accessToken?: string
   clientId?: string
@@ -9,6 +11,8 @@ export interface GoogleDriveClientOptions {
   tokenUrl?: string
   timeoutMs?: number
   fetchImpl?: typeof fetch
+  /** Test-only DNS lookup override; production uses node:dns/promises. */
+  lookupImpl?: LookupImpl
 }
 
 export class GoogleDriveError extends Error {
@@ -390,6 +394,7 @@ export class GoogleDriveClient {
   private readonly tokenUrl: string
   private readonly timeoutMs: number
   private readonly fetchImpl: typeof fetch
+  private readonly lookupImpl: LookupImpl | undefined
   private tokenCache: TokenCache | null = null
 
   constructor(options: GoogleDriveClientOptions = {}) {
@@ -397,10 +402,21 @@ export class GoogleDriveClient {
     this.clientId = options.clientId ?? ''
     this.clientSecret = options.clientSecret ?? ''
     this.refreshToken = options.refreshToken ?? ''
-    this.baseUrl = (options.baseUrl ?? 'https://www.googleapis.com/drive/v3').replace(/\/+$/, '')
-    this.tokenUrl = options.tokenUrl ?? 'https://oauth2.googleapis.com/token'
+    try {
+      this.baseUrl = normalizeBaseUrl(options.baseUrl, 'https://www.googleapis.com/drive/v3')
+    } catch (error) {
+      if (error instanceof EndpointSecurityError) throw new GoogleDriveError(error.message, 400)
+      throw error
+    }
+    try {
+      this.tokenUrl = normalizeBaseUrl(options.tokenUrl, 'https://oauth2.googleapis.com/token')
+    } catch (error) {
+      if (error instanceof EndpointSecurityError) throw new GoogleDriveError(error.message, 400)
+      throw error
+    }
     this.timeoutMs = options.timeoutMs ?? 15000
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch
+    this.lookupImpl = options.lookupImpl
   }
 
   hasCredentials(): boolean {
@@ -442,6 +458,12 @@ export class GoogleDriveClient {
     const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
     const timer = this.timeoutMs > 0 ? setTimeout(() => controller.abort(), this.timeoutMs) : undefined
     try {
+      try {
+        await assertSafeUrl(new URL(this.tokenUrl), this.lookupImpl)
+      } catch (error) {
+        if (error instanceof EndpointSecurityError) throw new GoogleDriveError(error.message, 400)
+        throw error
+      }
       const response = await this.fetchImpl(this.tokenUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -484,6 +506,12 @@ export class GoogleDriveClient {
     const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
     const timer = this.timeoutMs > 0 ? setTimeout(() => controller.abort(), this.timeoutMs) : undefined
     try {
+      try {
+        await assertSafeUrl(new URL(url), this.lookupImpl)
+      } catch (error) {
+        if (error instanceof EndpointSecurityError) throw new GoogleDriveError(error.message, 400)
+        throw error
+      }
       const response = await this.fetchImpl(url, {
         method,
         headers,

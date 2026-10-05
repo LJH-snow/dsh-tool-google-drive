@@ -78,3 +78,13 @@ npm run build
 - 多文件批量导出与本地落盘。
 - Docs 结构化段落/标题/表格更细粒度输出。
 - Sheets 批量 range 读取与更友好的表格渲染。
+
+## endpoint 安全校验（2026-10-05 追加）
+
+`baseUrl` 与 `tokenUrl` 均规范化为 origin + 路径前缀，禁止 credentials、query 与 fragment。**两个端点分别校验**：OAuth 刷新端点和 API 根一样是配置注入点，只守其一会留下缺口。
+
+每次请求前用 `src/url-security.ts` 做 fail-closed 目标校验：拒绝 localhost/.local 名称、环回、私有、链路本地、CGNAT、组播、保留及全部 IANA 特殊用途地址段，域名 DNS 结果含任一此类地址即拒绝。
+
+**守卫必须放在每个 fetch 调用点，而非只在构造时校验 `baseUrl`**：`buildUrl()` 接受绝对 URL（`/^https?:\/\//` 直接透传），因此调用方可能绕过 `baseUrl` 传入任意地址。这是本插件有两个 fetch 点、却仍需逐点守卫的原因。
+
+阻断清单（18 个 IPv4 + 16 个 IPv6）与 IANA 注册表对齐；`src/url-security.ts` 由 `.verify/gen-url-security.mjs` 生成，**不得单独修改**，行为由 `.verify/security-vectors.json` 生成的向量固定。`lookupImpl` 仅作测试注入点，不进入插件配置接口。

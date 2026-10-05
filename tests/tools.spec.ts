@@ -4,6 +4,10 @@ import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import { GoogleDriveClient } from '../src/client.ts'
 import { createTools } from '../src/index.ts'
 
+/** Deterministic DNS so the suite never depends on resolution. */
+const publicLookup = async () => [{ address: '93.184.216.34', family: 4 as const }]
+
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
@@ -12,7 +16,7 @@ function exec(): ToolRunContext {
   return { signal: new AbortController().signal } as unknown as ToolRunContext
 }
 
-function tools(client = new GoogleDriveClient({ fetchImpl: globalThis.fetch })) {
+function tools(client = new GoogleDriveClient({ lookupImpl: publicLookup, fetchImpl: globalThis.fetch })) {
   return Object.fromEntries(createTools(client).map(tool => [tool.name, tool]))
 }
 
@@ -61,7 +65,7 @@ describe('tool definitions', () => {
       files: [{ id: 'file_1', name: 'Report', mimeType: 'application/pdf', modifiedTime: '2026-08-01T00:00:00Z' }],
       nextPageToken: '',
     }))
-    const map = tools(new GoogleDriveClient({ accessToken: 'ya29.static', fetchImpl }))
+    const map = tools(new GoogleDriveClient({ lookupImpl: publicLookup, accessToken: 'ya29.static', fetchImpl }))
     const result = await map.gdrive_list_files.execute({ query: "name contains 'Report'" }, exec())
 
     expect(result).toMatchObject({ found: true })
@@ -76,7 +80,7 @@ describe('tool definitions', () => {
         id: 'file_1', name: 'Report', mimeType: 'application/pdf', description: 'Quarterly report',
         webViewLink: 'https://drive.google.com/file/d/file_1/view', parents: ['root'], owners: [],
       }))
-    const map = tools(new GoogleDriveClient({ clientId: 'cid', clientSecret: 'csecret', refreshToken: 'rtok', fetchImpl }))
+    const map = tools(new GoogleDriveClient({ lookupImpl: publicLookup, clientId: 'cid', clientSecret: 'csecret', refreshToken: 'rtok', fetchImpl }))
 
     const auth = await map.gdrive_auth_test.execute({}, exec())
     expect(auth).toMatchObject({ ok: true, authMethod: 'refresh_token' })
@@ -91,7 +95,7 @@ describe('tool definitions', () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ permissions: [{ id: 'perm_1', type: 'user', role: 'reader', displayName: 'Alice', emailAddress: 'alice@example.com', deleted: false }], nextPageToken: 'perm_next' }))
       .mockResolvedValueOnce(jsonResponse({ revisions: [{ id: 'rev_1', mimeType: 'application/pdf', modifiedTime: '2026-08-02T00:00:00Z', keepForever: true, size: '1234', originalFilename: 'report.pdf' }], nextPageToken: 'rev_next' }))
-    const map = tools(new GoogleDriveClient({ accessToken: 'ya29.static', fetchImpl }))
+    const map = tools(new GoogleDriveClient({ lookupImpl: publicLookup, accessToken: 'ya29.static', fetchImpl }))
 
     const permissions = await map.gdrive_list_permissions.execute({ fileId: 'file_1', pageSize: 10, pageToken: 'perm_prev' }, exec())
     const revisions = await map.gdrive_list_revisions.execute({ fileId: 'file_1', pageSize: 5, pageToken: 'rev_prev' }, exec())
@@ -122,7 +126,7 @@ describe('tool definitions', () => {
         sheets: [{ properties: { sheetId: 0, title: 'Sheet1', index: 0, sheetType: 'GRID', gridProperties: { rowCount: 100, columnCount: 20, frozenRowCount: 1 } } }],
       }))
       .mockResolvedValueOnce(jsonResponse({ range: 'Sheet1!A1:B2', majorDimension: 'ROWS', values: [['Name', 'Cost'], ['Server', '100']] }))
-    const map = tools(new GoogleDriveClient({ accessToken: 'ya29.static', fetchImpl }))
+    const map = tools(new GoogleDriveClient({ lookupImpl: publicLookup, accessToken: 'ya29.static', fetchImpl }))
 
     const exported = await map.gdrive_export_file.execute({ fileId: 'doc_1' }, exec())
     expect(exported).toMatchObject({ found: true, encoding: 'text', content: 'hello export', contentLength: 12 })
