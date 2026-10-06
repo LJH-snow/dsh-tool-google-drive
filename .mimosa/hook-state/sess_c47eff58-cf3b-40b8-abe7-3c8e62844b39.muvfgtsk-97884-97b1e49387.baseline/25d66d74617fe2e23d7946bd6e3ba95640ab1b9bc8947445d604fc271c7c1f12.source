@@ -532,8 +532,7 @@ export class GoogleDriveClient {
 
   async authTest(signal?: AbortSignal): Promise<{ ok: boolean; authMethod: string }> {
     await this.getAccessToken(signal)
-    const credentialKind = this.staticToken ? 'access' : 'refresh'
-    return { ok: true, authMethod: credentialKind + '_token' }
+    return { ok: true, authMethod: this.staticToken ? 'access_token' : 'refresh_token' }
   }
 
   async listFiles(options: {

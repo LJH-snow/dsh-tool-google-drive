@@ -1,0 +1,12 @@
+import type { LookupAddress } from 'node:dns';
+export type LookupImpl = (hostname: string, options: {
+    all: true;
+}) => Promise<LookupAddress[]>;
+export declare class EndpointSecurityError extends Error {
+    constructor(message: string);
+}
+export declare function isBlockedAddress(address: string): boolean;
+/** Normalize a configured endpoint to origin + optional path prefix. */
+export declare function normalizeBaseUrl(value: string | undefined, fallback?: string): string;
+/** Validate the final request destination, resolving ordinary hostnames fail-closed. */
+export declare function assertSafeUrl(url: URL, lookupImpl?: LookupImpl): Promise<void>;

@@ -1,0 +1,16 @@
+import type { Context } from '@deepseek-ai/cordis';
+import { GoogleDriveClient } from './client.js';
+export declare const name = "dsh-tool-google-drive";
+export declare const inject: string[];
+export interface GoogleDrivePluginConfig {
+    accessToken?: string;
+    clientId?: string;
+    clientSecret?: string;
+    refreshToken?: string;
+    baseUrl?: string;
+    tokenUrl?: string;
+    timeoutMs?: number;
+}
+export type { DrivePermissionInfo, DriveRevisionInfo } from './client.js';
+export declare function apply(ctx: Context, config?: GoogleDrivePluginConfig): void;
+export declare function createTools(client: GoogleDriveClient): import("@deepseek-ai/dsh-tools").ToolDefinition[];
